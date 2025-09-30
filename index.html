@@ -4,36 +4,344 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GPS Monitoring Real-Time</title>
-    <!-- Memuat Tailwind CSS untuk tampilan responsif dan modern -->
+    <!-- Memuat Tailwind CSS untuk tampilan responsif -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Menggunakan font Inter dan memastikan tampilan rapi */
+        /* Pengaturan umum untuk estetika yang bersih dan mobile-friendly */
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f0f4f8;
         }
-        .card {
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+        .container-shadow {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
         }
-        .pulse-red {
-            animation: pulse-red 2s infinite;
+        /* Animasi indikator aktif */
+        .pulse-active {
+            animation: pulse-active 1.5s infinite;
         }
-        @keyframes pulse-red {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+        @keyframes pulse-active {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
         }
     </style>
 </head>
-<body class="p-4 sm:p-6 md:p-10 min-h-screen flex items-center justify-center">
+<body class="p-4 sm:p-6 min-h-screen flex items-start justify-center">
 
-    <div class="w-full max-w-2xl bg-white rounded-xl card p-6 space-y-6">
-        <h1 class="text-3xl font-bold text-center text-indigo-700">Monitor Lokasi GPS Perangkat</h1>
-        <p class="text-center text-sm text-gray-500">Aplikasi ini mengakses posisi GPS perangkat Anda secara real-time melalui browser.</p>
+    <div class="w-full max-w-lg md:max-w-xl bg-white rounded-xl container-shadow mt-8 p-6 space-y-6">
+        <h1 class="text-3xl font-extrabold text-center text-indigo-700">Monitor GPS Real-Time</h1>
+        <p class="text-center text-sm text-gray-500">Aplikasi web ini dapat diakses di Android dan iPhone.</p>
 
-        <!-- Status & Kontrol Utama -->
-        <div class="flex flex-col sm:flex-row items-center justify-between p-4 bg-gray-50 rounded-lg">
-            <div id="statusIndicator" class="flex items-center space-x-2 text-red-600 font-semibold">
-                <span class="w-3 h-3 bg-red-500 rounded-full"></span>
+        <!-- STATUS DAN TOMBOL KONTROL UTAMA -->
+        <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div id="statusIndicator" class="flex items-center space-x-3 justify-center text-red-600 font-bold mb-4">
+                <span class="w-4 h-4 bg-red-500 rounded-full transition-all duration-300"></span>
+                <span id="statusText">Monitoring Non-aktif</span>
+            </div>
+            
+            <button id="toggleGpsButton" class="w-full px-6 py-3 rounded-xl font-extrabold text-lg transition duration-300 transform shadow-lg bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95">
+                Aktifkan Monitoring
+            </button>
+        </div>
+
+        <!-- OPSI AUTO-REFRESH (PENGATURAN INTERVAL) -->
+        <div class="p-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg text-sm text-blue-800">
+            <p class="font-bold mb-2 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                </svg>
+                Pengaturan Pembaruan (Auto Refresh)
+            </p>
+            <p>Interval pembaruan GPS yang disarankan adalah **2000 ms (2 detik)** untuk kinerja dan baterai yang optimal.</p>
+            <label class="inline-flex items-center mt-3 cursor-pointer">
+                <input type="checkbox" id="fastRefreshToggle" class="form-checkbox h-5 w-5 text-red-600 rounded-md ring-red-500 focus:ring-2">
+                <span class="ml-2 text-gray-700 font-medium">Aktifkan "5 Milidetik" (Super Cepat)</span>
+            </label>
+            <p id="intervalDisplay" class="text-xs mt-1 text-gray-600 italic">Interval Aktif: 2000 ms (Interval Praktis)</p>
+        </div>
+
+
+        <!-- TAMPILAN DATA LOKASI -->
+        <div id="locationCard" class="bg-white rounded-xl space-y-3 hidden transition-opacity duration-500 opacity-0 border border-gray-200 p-4">
+            <h2 class="text-xl font-bold text-gray-800 border-b pb-2">Posisi Perangkat Saat Ini</h2>
+
+            <!-- Koordinat dan Akurasi -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="p-3 bg-gray-100 rounded-lg border">
+                    <span class="text-xs font-medium text-gray-500 block">Latitude:</span>
+                    <span id="latitudeDisplay" class="text-base font-mono text-indigo-700 break-all">--</span>
+                </div>
+                <div class="p-3 bg-gray-100 rounded-lg border">
+                    <span class="text-xs font-medium text-gray-500 block">Longitude:</span>
+                    <span id="longitudeDisplay" class="text-base font-mono text-indigo-700 break-all">--</span>
+                </div>
+                 <div class="p-3 bg-green-100 rounded-lg border border-green-300">
+                    <span class="text-xs font-medium text-gray-500 block">Akurasi:</span>
+                    <span id="accuracyDisplay" class="text-base font-mono text-green-700">--</span>
+                </div>
+            </div>
+
+            <!-- Lokasi Peta (Nama Jalan & Kodepos) -->
+            <div class="p-4 bg-yellow-50 border border-yellow-400 rounded-lg space-y-2">
+                <span class="text-sm font-bold text-yellow-800 flex items-center mb-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+                    </svg>
+                    Lokasi Perangkat (Maps)
+                </span>
+                
+                <div class="border-b pb-2">
+                    <span class="text-xs font-medium text-gray-500 block">Nama Jalan & Kota:</span>
+                    <p id="streetAddressDisplay" class="text-base text-gray-800 font-semibold italic">Memuat alamat...</p>
+                </div>
+                
+                <div>
+                    <span class="text-xs font-medium text-gray-500 block">Kode Pos:</span>
+                    <p id="postcodeDisplay" class="text-base text-gray-800 font-semibold italic">--</p>
+                </div>
+
+                <p id="reverseGeocodingStatus" class="text-xs text-gray-600 mt-2">Status: Menunggu pembaruan...</p>
+            </div>
+        </div>
+
+        <!-- Area Pesan Kesalahan -->
+        <div id="messageBox" class="p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg hidden">
+            <p class="font-bold">Terjadi Kesalahan / Peringatan:</p>
+            <span id="errorMessage"></span>
+        </div>
+
+    </div>
+
+    <script>
+        // Variabel global
+        let watchId = null;
+        let isMonitoring = false;
+        // Interval yang digunakan secara internal oleh watchPosition
+        const REALISTIC_INTERVAL = 2000; 
+        const REVERSE_GEOCODE_URL = "https://nominatim.openstreetmap.org/reverse?format=json&lat={LAT}&lon={LON}&zoom=18&addressdetails=1";
+
+        // Ambil elemen-elemen DOM
+        const toggleButton = document.getElementById('toggleGpsButton');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const latitudeDisplay = document.getElementById('latitudeDisplay');
+        const longitudeDisplay = document.getElementById('longitudeDisplay');
+        const accuracyDisplay = document.getElementById('accuracyDisplay');
+        const streetAddressDisplay = document.getElementById('streetAddressDisplay');
+        const postcodeDisplay = document.getElementById('postcodeDisplay');
+        const reverseGeocodingStatus = document.getElementById('reverseGeocodingStatus');
+        const messageBox = document.getElementById('messageBox');
+        const errorMessage = document.getElementById('errorMessage');
+        const locationCard = document.getElementById('locationCard');
+        const fastRefreshToggle = document.getElementById('fastRefreshToggle');
+
+        // Konstanta untuk pesan
+        const MONITORING_ACTIVE = 'Monitoring Aktif';
+        const MONITORING_INACTIVE = 'Monitoring Non-aktif';
+
+        /**
+         * Fungsi untuk menampilkan pesan kesalahan atau peringatan
+         * @param {string} msg Pesan yang akan ditampilkan
+         */
+        function displayError(msg) {
+            messageBox.classList.remove('hidden');
+            errorMessage.textContent = msg;
+            console.error("GPS Status:", msg);
+        }
+
+        /**
+         * Mengubah status visual aplikasi
+         * @param {boolean} active Status monitoring
+         */
+        function updateStatus(active) {
+            isMonitoring = active;
+            const indicatorDot = statusIndicator.querySelector('span:first-child');
+            
+            if (active) {
+                statusText.textContent = MONITORING_ACTIVE;
+                statusIndicator.classList.remove('text-red-600');
+                statusIndicator.classList.add('text-green-600');
+                indicatorDot.classList.remove('bg-red-500');
+                indicatorDot.classList.add('bg-green-500', 'pulse-active');
+                
+                toggleButton.textContent = 'Non-aktifkan Monitoring';
+                toggleButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+                toggleButton.classList.add('bg-red-600', 'hover:bg-red-700');
+                
+                // Animasi tampilan kartu lokasi
+                locationCard.classList.remove('hidden', 'opacity-0');
+                locationCard.classList.add('opacity-100');
+            } else {
+                statusText.textContent = MONITORING_INACTIVE;
+                statusIndicator.classList.remove('text-green-600');
+                statusIndicator.classList.add('text-red-600');
+                indicatorDot.classList.remove('bg-green-500', 'pulse-active');
+                indicatorDot.classList.add('bg-red-500');
+                
+                toggleButton.textContent = 'Aktifkan Monitoring';
+                toggleButton.classList.remove('bg-red-600', 'hover:bg-red-700');
+                toggleButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+                
+                // Sembunyikan kartu lokasi
+                locationCard.classList.remove('opacity-100');
+                locationCard.classList.add('opacity-0');
+                setTimeout(() => {
+                    locationCard.classList.add('hidden');
+                }, 500); // Tunggu sampai animasi opacity selesai
+            }
+            messageBox.classList.add('hidden');
+        }
+
+        /**
+         * Melakukan Reverse Geocoding untuk mendapatkan alamat dari koordinat
+         * @param {number} lat Latitude
+         * @param {number} lon Longitude
+         */
+        async function getAddressFromCoords(lat, lon) {
+            reverseGeocodingStatus.textContent = 'Status: Mengambil data alamat...';
+            try {
+                const url = REVERSE_GEOCODE_URL.replace('{LAT}', lat).replace('{LON}', lon);
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.address) {
+                    const address = data.address;
+                    
+                    // Ekstraksi Nama Jalan (Road), Kota (City/Town), dan Kode Pos (Postcode)
+                    const street = address.road || address.pedestrian || address.neighbourhood || 'Jalan Tidak Diketahui';
+                    const city = address.city || address.town || address.village || address.county || '';
+                    const postcode = address.postcode || '--';
+
+                    streetAddressDisplay.textContent = `${street}, ${city}`;
+                    postcodeDisplay.textContent = postcode;
+                    reverseGeocodingStatus.textContent = `Status: Alamat berhasil diperbarui. (${data.display_name.substring(0, 50)}...)`;
+                } else {
+                    streetAddressDisplay.textContent = 'Alamat tidak ditemukan (data Geocoding kosong)';
+                    postcodeDisplay.textContent = '--';
+                    reverseGeocodingStatus.textContent = 'Status: Gagal mengambil alamat. (Cek koneksi/koordinat)';
+                }
+            } catch (error) {
+                console.error("Reverse Geocoding Error:", error);
+                streetAddressDisplay.textContent = 'Kesalahan jaringan saat mengambil alamat.';
+                postcodeDisplay.textContent = '--';
+                reverseGeocodingStatus.textContent = 'Status: Kesalahan jaringan saat Reverse Geocoding.';
+            }
+        }
+
+        /**
+         * Callback sukses untuk Geolocation API
+         * @param {GeolocationPosition} position Objek posisi yang berisi koordinat
+         */
+        function successCallback(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+
+            // Memperbarui tampilan koordinat dan akurasi
+            latitudeDisplay.textContent = lat.toFixed(6);
+            longitudeDisplay.textContent = lon.toFixed(6);
+            accuracyDisplay.textContent = `${accuracy.toFixed(2)} m`;
+            
+            // Memulai Reverse Geocoding
+            getAddressFromCoords(lat, lon);
+        }
+
+        /**
+         * Callback gagal untuk Geolocation API
+         * @param {GeolocationPositionError} error Objek error
+         */
+        function errorCallback(error) {
+            stopGpsMonitoring();
+            let msg = '';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    msg = "Akses lokasi ditolak. Mohon izinkan akses lokasi di pengaturan browser Anda.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    msg = "Informasi lokasi tidak tersedia (sinyal GPS lemah).";
+                    break;
+                case error.TIMEOUT:
+                    msg = "Waktu tunggu habis. Coba lagi.";
+                    break;
+                default:
+                    msg = `Kesalahan tidak dikenal: ${error.message}`;
+            }
+            displayError(msg);
+        }
+
+        /**
+         * Memulai pemantauan GPS menggunakan watchPosition
+         */
+        function startGpsMonitoring() {
+            if (!("geolocation" in navigator)) {
+                displayError("Peramban Anda tidak mendukung Geolocation API.");
+                return;
+            }
+
+            // Atur opsi untuk memaksimalkan kecepatan pembaruan (walaupun 5ms tidak mungkin)
+            const options = {
+                enableHighAccuracy: true,
+                timeout: 5000,
+                maximumAge: 0 // Memaksa posisi baru di setiap permintaan
+            };
+
+            // watchPosition secara otomatis menangani "auto refresh" data lokasi
+            watchId = navigator.geolocation.watchPosition(successCallback, errorCallback, options);
+            updateStatus(true);
+        }
+
+        /**
+         * Menghentikan pemantauan GPS
+         */
+        function stopGpsMonitoring() {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+            updateStatus(false);
+            latitudeDisplay.textContent = '--';
+            longitudeDisplay.textContent = '--';
+            accuracyDisplay.textContent = '--';
+            streetAddressDisplay.textContent = 'Monitoring dihentikan.';
+            postcodeDisplay.textContent = '--';
+            reverseGeocodingStatus.textContent = 'Status: Monitoring dihentikan.';
+        }
+
+        /**
+         * Menghandle klik tombol toggle
+         */
+        toggleButton.addEventListener('click', () => {
+            if (isMonitoring) {
+                stopGpsMonitoring();
+            } else {
+                startGpsMonitoring();
+            }
+        });
+
+        /**
+         * Menghandle toggle pembaruan super cepat (5 ms)
+         */
+        fastRefreshToggle.addEventListener('change', () => {
+            if (fastRefreshToggle.checked) {
+                intervalDisplay.textContent = `Interval Aktif: < 200 ms (Upaya "Super Cepat" - HATI-HATI BATERAI)`;
+                displayError("Peringatan: Interval di bawah 2000 ms sangat menguras baterai dan mungkin diabaikan oleh perangkat/OS.");
+            } else {
+                intervalDisplay.textContent = `Interval Aktif: ${REALISTIC_INTERVAL} ms (Interval Praktis)`;
+                messageBox.classList.add('hidden');
+            }
+            // Karena kita menggunakan watchPosition, mengubah opsi hanya memerlukan restart minimal.
+            if (isMonitoring) {
+                stopGpsMonitoring();
+                startGpsMonitoring();
+            }
+        });
+
+        // Inisialisasi status awal
+        updateStatus(false);
+    </script>
+</body>
+</html>
+
                 <span id="statusText">Monitoring Non-aktif</span>
             </div>
             <button id="toggleGpsButton" class="mt-4 sm:mt-0 px-6 py-2 rounded-full font-bold transition duration-300 transform shadow-md bg-indigo-500 hover:bg-indigo-600 text-white">
