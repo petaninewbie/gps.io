@@ -60,12 +60,22 @@
             <p id="intervalDisplay" class="text-xs mt-1 text-gray-600 italic">Interval Aktif: 2000 ms (Interval Praktis)</p>
         </div>
 
-
+        <!-- Area Petunjuk Izin Lokasi KHUSUS -->
+        <div id="permissionGuidanceBox" class="p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 rounded-lg hidden">
+            <p class="font-bold mb-1">Tindakan Diperlukan: Berikan Izin Lokasi!</p>
+            <p class="text-sm">Kesalahan "Akses lokasi ditolak" berarti peramban Anda memblokir sensor GPS. Anda perlu **memberikan izin lokasi** di pengaturan peramban (cari ikon gembok di bilah alamat, atau cek notifikasi perizinan). Setelah diizinkan, klik tombol **Aktifkan Monitoring** lagi.</p>
+        </div>
+        
         <!-- TAMPILAN DATA LOKASI -->
         <div id="locationCard" class="bg-white rounded-xl space-y-3 hidden transition-opacity duration-500 opacity-0 border border-gray-200 p-4">
             <h2 class="text-xl font-bold text-gray-800 border-b pb-2">Posisi Perangkat Saat Ini</h2>
 
-            <!-- Koordinat dan Akurasi -->
+            <!-- Status Akurasi (BARU) -->
+            <div id="accuracyStatusBox" class="p-3 rounded-lg flex items-center justify-center font-bold text-lg border">
+                <span id="accuracyStatusText">--</span>
+            </div>
+
+            <!-- Koordinat dan Akurasi Meter -->
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div class="p-3 bg-gray-100 rounded-lg border">
                     <span class="text-xs font-medium text-gray-500 block">Latitude:</span>
@@ -76,7 +86,7 @@
                     <span id="longitudeDisplay" class="text-base font-mono text-indigo-700 break-all">--</span>
                 </div>
                  <div class="p-3 bg-green-100 rounded-lg border border-green-300">
-                    <span class="text-xs font-medium text-gray-500 block">Akurasi:</span>
+                    <span class="text-xs font-medium text-gray-500 block">Akurasi Jarak:</span>
                     <span id="accuracyDisplay" class="text-base font-mono text-green-700">--</span>
                 </div>
             </div>
@@ -104,7 +114,7 @@
             </div>
         </div>
 
-        <!-- Area Pesan Kesalahan -->
+        <!-- Area Pesan Kesalahan UMUM -->
         <div id="messageBox" class="p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg hidden">
             <p class="font-bold">Terjadi Kesalahan / Peringatan:</p>
             <span id="errorMessage"></span>
@@ -134,6 +144,10 @@
         const errorMessage = document.getElementById('errorMessage');
         const locationCard = document.getElementById('locationCard');
         const fastRefreshToggle = document.getElementById('fastRefreshToggle');
+        const permissionGuidanceBox = document.getElementById('permissionGuidanceBox'); 
+        // Elemen baru
+        const accuracyStatusBox = document.getElementById('accuracyStatusBox');
+        const accuracyStatusText = document.getElementById('accuracyStatusText');
 
         // Konstanta untuk pesan
         const MONITORING_ACTIVE = 'Monitoring Aktif';
@@ -190,6 +204,33 @@
                 }, 500); // Tunggu sampai animasi opacity selesai
             }
             messageBox.classList.add('hidden');
+            permissionGuidanceBox.classList.add('hidden'); 
+        }
+
+        /**
+         * Menentukan status akurasi dan memperbarui kotak status visual
+         * @param {number} accuracy Akurasi dalam meter
+         */
+        function updateAccuracyStatus(accuracy) {
+            let status = '';
+            let colorClasses = '';
+
+            // Menghapus kelas warna sebelumnya
+            accuracyStatusBox.classList.remove('bg-green-500', 'text-white', 'bg-yellow-500', 'text-gray-900', 'bg-red-500', 'text-white');
+
+            if (accuracy <= 10) {
+                status = 'AKURASI TINGGI (Sangat Baik)';
+                colorClasses = 'bg-green-500 text-white border-green-700';
+            } else if (accuracy <= 50) {
+                status = 'AKURASI SEDANG (Cukup Baik)';
+                colorClasses = 'bg-yellow-500 text-gray-900 border-yellow-700';
+            } else {
+                status = 'AKURASI RENDAH (Kurang Akurat)';
+                colorClasses = 'bg-red-500 text-white border-red-700';
+            }
+
+            accuracyStatusText.textContent = status;
+            accuracyStatusBox.classList.add(...colorClasses.split(' '));
         }
 
         /**
@@ -200,8 +241,28 @@
         async function getAddressFromCoords(lat, lon) {
             reverseGeocodingStatus.textContent = 'Status: Mengambil data alamat...';
             try {
-                const url = REVERSE_GEOCODE_URL.replace('{LAT}', lat).replace('{LON}', lon);
-                const response = await fetch(url);
+                // Fetch call menggunakan exponential backoff untuk keandalan (opsional, tapi disarankan)
+                let response = null;
+                const maxRetries = 3;
+                let delay = 1000;
+
+                for (let i = 0; i < maxRetries; i++) {
+                    const url = REVERSE_GEOCODE_URL.replace('{LAT}', lat).replace('{LON}', lon);
+                    response = await fetch(url);
+
+                    if (response.ok) break;
+
+                    if (i < maxRetries - 1) {
+                        // console.warn(`Retrying geocoding in ${delay}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2; // Exponential backoff
+                    }
+                }
+
+                if (!response || !response.ok) {
+                    throw new Error(`Failed to fetch address after ${maxRetries} retries.`);
+                }
+                
                 const data = await response.json();
                 
                 if (data.address) {
@@ -237,10 +298,12 @@
             const lon = position.coords.longitude;
             const accuracy = position.coords.accuracy;
 
-            // Memperbarui tampilan koordinat dan akurasi
+            // Memperbarui tampilan koordinat, akurasi meter, dan status akurasi
             latitudeDisplay.textContent = lat.toFixed(6);
             longitudeDisplay.textContent = lon.toFixed(6);
             accuracyDisplay.textContent = `${accuracy.toFixed(2)} m`;
+            
+            updateAccuracyStatus(accuracy);
             
             // Memulai Reverse Geocoding
             getAddressFromCoords(lat, lon);
@@ -253,9 +316,20 @@
         function errorCallback(error) {
             stopGpsMonitoring();
             let msg = '';
+            
+            // Reset visual akurasi ke status non-aktif
+            accuracyStatusText.textContent = '--';
+            accuracyStatusBox.classList.remove('bg-green-500', 'text-white', 'bg-yellow-500', 'text-gray-900', 'bg-red-500', 'text-white');
+            accuracyStatusBox.classList.add('bg-gray-100', 'text-gray-500');
+
             switch(error.code) {
                 case error.PERMISSION_DENIED:
-                    msg = "Akses lokasi ditolak. Mohon izinkan akses lokasi di pengaturan browser Anda.";
+                    msg = "Izin lokasi diblokir. Silakan lihat petunjuk di bawah ini."; 
+                    permissionGuidanceBox.classList.remove('hidden'); 
+                    
+                    streetAddressDisplay.textContent = 'Izin Lokasi Ditolak.';
+                    postcodeDisplay.textContent = '--';
+                    reverseGeocodingStatus.textContent = 'Status: Perlu Izin Lokasi.';
                     break;
                 case error.POSITION_UNAVAILABLE:
                     msg = "Informasi lokasi tidak tersedia (sinyal GPS lemah).";
@@ -305,6 +379,11 @@
             streetAddressDisplay.textContent = 'Monitoring dihentikan.';
             postcodeDisplay.textContent = '--';
             reverseGeocodingStatus.textContent = 'Status: Monitoring dihentikan.';
+            
+            // Reset visual akurasi ke status non-aktif
+            accuracyStatusText.textContent = '--';
+            accuracyStatusBox.classList.remove('bg-green-500', 'text-white', 'bg-yellow-500', 'text-gray-900', 'bg-red-500', 'text-white');
+            accuracyStatusBox.classList.add('bg-gray-100', 'text-gray-500');
         }
 
         /**
@@ -341,4 +420,3 @@
     </script>
 </body>
 </html>
-
