@@ -71,9 +71,14 @@
             <h2 class="text-xl font-bold text-gray-800 border-b pb-2">Posisi Perangkat Saat Ini</h2>
 
             <!-- Status Akurasi (BARU) -->
-            <div id="accuracyStatusBox" class="p-3 rounded-lg flex items-center justify-center font-bold text-lg border">
+            <div id="accuracyStatusBox" class="p-3 rounded-lg flex items-center justify-center font-bold text-lg border mb-2">
                 <span id="accuracyStatusText">--</span>
             </div>
+            
+            <!-- Tombol Akurasi (BARU) -->
+            <button id="improveAccuracyButton" class="w-full px-4 py-2 rounded-xl text-sm font-bold transition duration-200 transform shadow-md active:scale-95 bg-orange-500 hover:bg-orange-600 text-white hidden">
+                Akurasikan Maps (Paksa Pembaruan)
+            </button>
 
             <!-- Koordinat dan Akurasi Meter -->
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -145,9 +150,11 @@
         const locationCard = document.getElementById('locationCard');
         const fastRefreshToggle = document.getElementById('fastRefreshToggle');
         const permissionGuidanceBox = document.getElementById('permissionGuidanceBox'); 
+        
         // Elemen baru
         const accuracyStatusBox = document.getElementById('accuracyStatusBox');
         const accuracyStatusText = document.getElementById('accuracyStatusText');
+        const improveAccuracyButton = document.getElementById('improveAccuracyButton'); // Tombol Akurasi
 
         // Konstanta untuk pesan
         const MONITORING_ACTIVE = 'Monitoring Aktif';
@@ -214,23 +221,34 @@
         function updateAccuracyStatus(accuracy) {
             let status = '';
             let colorClasses = '';
+            let needsImprovement = false; // Flag baru untuk tombol
 
             // Menghapus kelas warna sebelumnya
-            accuracyStatusBox.classList.remove('bg-green-500', 'text-white', 'bg-yellow-500', 'text-gray-900', 'bg-red-500', 'text-white');
+            accuracyStatusBox.classList.remove('bg-green-500', 'text-white', 'bg-yellow-500', 'text-gray-900', 'bg-red-500', 'text-white', 'bg-gray-100');
 
             if (accuracy <= 10) {
                 status = 'AKURASI TINGGI (Sangat Baik)';
                 colorClasses = 'bg-green-500 text-white border-green-700';
+                needsImprovement = false;
             } else if (accuracy <= 50) {
                 status = 'AKURASI SEDANG (Cukup Baik)';
                 colorClasses = 'bg-yellow-500 text-gray-900 border-yellow-700';
+                needsImprovement = true; 
             } else {
                 status = 'AKURASI RENDAH (Kurang Akurat)';
                 colorClasses = 'bg-red-500 text-white border-red-700';
+                needsImprovement = true; 
             }
 
             accuracyStatusText.textContent = status;
             accuracyStatusBox.classList.add(...colorClasses.split(' '));
+            
+            // Logika untuk menampilkan/menyembunyikan tombol
+            if (needsImprovement) {
+                improveAccuracyButton.classList.remove('hidden');
+            } else {
+                improveAccuracyButton.classList.add('hidden');
+            }
         }
 
         /**
@@ -241,7 +259,7 @@
         async function getAddressFromCoords(lat, lon) {
             reverseGeocodingStatus.textContent = 'Status: Mengambil data alamat...';
             try {
-                // Fetch call menggunakan exponential backoff untuk keandalan (opsional, tapi disarankan)
+                // Fetch call menggunakan exponential backoff untuk keandalan
                 let response = null;
                 const maxRetries = 3;
                 let delay = 1000;
@@ -253,7 +271,6 @@
                     if (response.ok) break;
 
                     if (i < maxRetries - 1) {
-                        // console.warn(`Retrying geocoding in ${delay}ms...`);
                         await new Promise(resolve => setTimeout(resolve, delay));
                         delay *= 2; // Exponential backoff
                     }
@@ -384,6 +401,9 @@
             accuracyStatusText.textContent = '--';
             accuracyStatusBox.classList.remove('bg-green-500', 'text-white', 'bg-yellow-500', 'text-gray-900', 'bg-red-500', 'text-white');
             accuracyStatusBox.classList.add('bg-gray-100', 'text-gray-500');
+            
+            // Sembunyikan tombol akurasi saat monitoring berhenti
+            improveAccuracyButton.classList.add('hidden'); 
         }
 
         /**
@@ -394,6 +414,21 @@
                 stopGpsMonitoring();
             } else {
                 startGpsMonitoring();
+            }
+        });
+
+        /**
+         * Menghandle klik tombol Akurasikan Maps (memaksa pembaruan)
+         */
+        improveAccuracyButton.addEventListener('click', () => {
+            if (isMonitoring) {
+                // Berikan pesan visual bahwa upaya akurasi dimulai
+                displayError("Memaksa pembaruan akurasi... sistem GPS perangkat diinisialisasi ulang. Tunggu sebentar.");
+                
+                // Matikan dan hidupkan kembali monitoring untuk memaksa perbaikan sinyal
+                stopGpsMonitoring();
+                startGpsMonitoring();
+                improveAccuracyButton.classList.add('hidden'); // Sembunyikan tombol saat pembaruan dimulai
             }
         });
 
