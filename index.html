@@ -132,7 +132,7 @@
         let watchId = null;
         let isMonitoring = false;
         // Interval yang digunakan secara internal oleh watchPosition
-        const REALISTIC_INTERVAL = 2000; 
+        const REALISTIC_INTERVAL = 5000; 
         const REVERSE_GEOCODE_URL = "https://nominatim.openstreetmap.org/reverse?format=json&lat={LAT}&lon={LON}&zoom=18&addressdetails=1";
 
         // Ambil elemen-elemen DOM
@@ -262,7 +262,7 @@
                 // Fetch call menggunakan exponential backoff untuk keandalan
                 let response = null;
                 const maxRetries = 3;
-                let delay = 1000;
+                let delay = 10000;
 
                 for (let i = 0; i < maxRetries; i++) {
                     const url = REVERSE_GEOCODE_URL.replace('{LAT}', lat).replace('{LON}', lon);
@@ -372,7 +372,7 @@
             // Atur opsi untuk memaksimalkan kecepatan pembaruan (walaupun 5ms tidak mungkin)
             const options = {
                 enableHighAccuracy: true,
-                timeout: 5000,
+                timeout: 50000,
                 maximumAge: 0 // Memaksa posisi baru di setiap permintaan
             };
 
