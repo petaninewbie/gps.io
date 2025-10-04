@@ -50,14 +50,14 @@
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
                 </svg>
-                Pengaturan Pembaruan (Auto Refresh)
+                Pengaturan Pembaruan (GPS Options)
             </p>
-            <p>Interval pembaruan GPS yang disarankan adalah **2000 ms (2 detik)** untuk kinerja dan baterai yang optimal.</p>
+            <p>Pengambilan data GPS diatur oleh opsi **High Accuracy** dan pembaruan paksa **Maximum Age: 1 detik**.</p>
             <label class="inline-flex items-center mt-3 cursor-pointer">
-                <input type="checkbox" id="fastRefreshToggle" class="form-checkbox h-5 w-5 text-red-600 rounded-md ring-red-500 focus:ring-2">
-                <span class="ml-2 text-gray-700 font-medium">Aktifkan "5 Milidetik" (Super Cepat)</span>
+                <input type="checkbox" id="highAccuracyToggle" class="form-checkbox h-5 w-5 text-green-600 rounded-md ring-green-500 focus:ring-2" checked>
+                <span class="ml-2 text-gray-700 font-medium">Aktifkan Akurasi Tinggi (Sangat Disarankan)</span>
             </label>
-            <p id="intervalDisplay" class="text-xs mt-1 text-gray-600 italic">Interval Aktif: 2000 ms (Interval Praktis)</p>
+            <p id="intervalDisplay" class="text-xs mt-1 text-gray-600 italic">Timeout Aktif: 20 detik (Waktu maksimum untuk mendapatkan sinyal).</p>
         </div>
 
         <!-- Area Petunjuk Izin Lokasi KHUSUS -->
@@ -70,14 +70,14 @@
         <div id="locationCard" class="bg-white rounded-xl space-y-3 hidden transition-opacity duration-500 opacity-0 border border-gray-200 p-4">
             <h2 class="text-xl font-bold text-gray-800 border-b pb-2">Posisi Perangkat Saat Ini</h2>
 
-            <!-- Status Akurasi (BARU) -->
-            <div id="accuracyStatusBox" class="p-3 rounded-lg flex items-center justify-center font-bold text-lg border mb-2">
-                <span id="accuracyStatusText">--</span>
+            <!-- Status Akurasi -->
+            <div id="accuracyStatusBox" class="p-3 rounded-lg flex items-center justify-center font-bold text-lg border mb-2 bg-gray-100 text-gray-500">
+                <span id="accuracyStatusText">Menunggu data GPS...</span>
             </div>
             
-            <!-- Tombol Akurasi (BARU) -->
+            <!-- Tombol Akurasi -->
             <button id="improveAccuracyButton" class="w-full px-4 py-2 rounded-xl text-sm font-bold transition duration-200 transform shadow-md active:scale-95 bg-orange-500 hover:bg-orange-600 text-white hidden">
-                Akurasikan Maps (Paksa Pembaruan)
+                Perbarui Sinyal (Cari Akurasi Lebih Baik)
             </button>
 
             <!-- Koordinat dan Akurasi Meter -->
@@ -131,9 +131,13 @@
         // Variabel global
         let watchId = null;
         let isMonitoring = false;
-        // Interval yang digunakan secara internal oleh watchPosition
-        const REALISTIC_INTERVAL = 5000; 
+        
+        // Konstanta: URL Nominatim OpenStreetMap (Perlu penambahan User-Agent yang proper untuk menghindari blokir)
         const REVERSE_GEOCODE_URL = "https://nominatim.openstreetmap.org/reverse?format=json&lat={LAT}&lon={LON}&zoom=18&addressdetails=1";
+        
+        // Konstanta untuk pesan
+        const MONITORING_ACTIVE = 'Monitoring Aktif';
+        const MONITORING_INACTIVE = 'Monitoring Non-aktif';
 
         // Ambil elemen-elemen DOM
         const toggleButton = document.getElementById('toggleGpsButton');
@@ -148,28 +152,37 @@
         const messageBox = document.getElementById('messageBox');
         const errorMessage = document.getElementById('errorMessage');
         const locationCard = document.getElementById('locationCard');
-        const fastRefreshToggle = document.getElementById('fastRefreshToggle');
         const permissionGuidanceBox = document.getElementById('permissionGuidanceBox'); 
         
-        // Elemen baru
+        // Elemen opsi
+        const highAccuracyToggle = document.getElementById('highAccuracyToggle');
+        
+        // Elemen Akurasi
         const accuracyStatusBox = document.getElementById('accuracyStatusBox');
         const accuracyStatusText = document.getElementById('accuracyStatusText');
-        const improveAccuracyButton = document.getElementById('improveAccuracyButton'); // Tombol Akurasi
-
-        // Konstanta untuk pesan
-        const MONITORING_ACTIVE = 'Monitoring Aktif';
-        const MONITORING_INACTIVE = 'Monitoring Non-aktif';
+        const improveAccuracyButton = document.getElementById('improveAccuracyButton'); 
 
         /**
          * Fungsi untuk menampilkan pesan kesalahan atau peringatan
          * @param {string} msg Pesan yang akan ditampilkan
+         * @param {string} type Tipe pesan ('error' atau 'warning')
          */
-        function displayError(msg) {
+        function displayMessage(msg, type = 'error') {
             messageBox.classList.remove('hidden');
             errorMessage.textContent = msg;
-            console.error("GPS Status:", msg);
-        }
+            
+            // Mengatur kelas visual berdasarkan tipe pesan
+            if (type === 'error') {
+                messageBox.classList.remove('bg-yellow-100', 'border-yellow-400', 'text-yellow-700');
+                messageBox.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
+            } else if (type === 'warning') {
+                messageBox.classList.remove('bg-red-100', 'border-red-400', 'text-red-700');
+                messageBox.classList.add('bg-yellow-100', 'border-yellow-400', 'text-yellow-700');
+            }
 
+            console.warn("GPS Status Message:", msg);
+        }
+        
         /**
          * Mengubah status visual aplikasi
          * @param {boolean} active Status monitoring
@@ -189,7 +202,6 @@
                 toggleButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
                 toggleButton.classList.add('bg-red-600', 'hover:bg-red-700');
                 
-                // Animasi tampilan kartu lokasi
                 locationCard.classList.remove('hidden', 'opacity-0');
                 locationCard.classList.add('opacity-100');
             } else {
@@ -203,12 +215,11 @@
                 toggleButton.classList.remove('bg-red-600', 'hover:bg-red-700');
                 toggleButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
                 
-                // Sembunyikan kartu lokasi
                 locationCard.classList.remove('opacity-100');
                 locationCard.classList.add('opacity-0');
                 setTimeout(() => {
                     locationCard.classList.add('hidden');
-                }, 500); // Tunggu sampai animasi opacity selesai
+                }, 500); 
             }
             messageBox.classList.add('hidden');
             permissionGuidanceBox.classList.add('hidden'); 
@@ -221,21 +232,21 @@
         function updateAccuracyStatus(accuracy) {
             let status = '';
             let colorClasses = '';
-            let needsImprovement = false; // Flag baru untuk tombol
+            let needsImprovement = false; 
 
             // Menghapus kelas warna sebelumnya
-            accuracyStatusBox.classList.remove('bg-green-500', 'text-white', 'bg-yellow-500', 'text-gray-900', 'bg-red-500', 'text-white', 'bg-gray-100');
+            accuracyStatusBox.classList.remove('bg-green-500', 'text-white', 'bg-yellow-500', 'text-gray-900', 'bg-red-500', 'text-white', 'bg-gray-100', 'text-gray-500');
 
-            if (accuracy <= 10) {
-                status = 'AKURASI TINGGI (Sangat Baik)';
-                colorClasses = 'bg-green-500 text-white border-green-700';
+            if (accuracy <= 8) {
+                status = 'AKURASI TINGGI (<8m)';
+                colorClasses = 'bg-green-600 text-white border-green-700';
                 needsImprovement = false;
-            } else if (accuracy <= 50) {
-                status = 'AKURASI SEDANG (Cukup Baik)';
+            } else if (accuracy <= 30) {
+                status = 'AKURASI SEDANG (8m-30m)';
                 colorClasses = 'bg-yellow-500 text-gray-900 border-yellow-700';
                 needsImprovement = true; 
             } else {
-                status = 'AKURASI RENDAH (Kurang Akurat)';
+                status = 'AKURASI RENDAH (>30m)';
                 colorClasses = 'bg-red-500 text-white border-red-700';
                 needsImprovement = true; 
             }
@@ -252,57 +263,68 @@
         }
 
         /**
-         * Melakukan Reverse Geocoding untuk mendapatkan alamat dari koordinat
+         * Melakukan Reverse Geocoding dengan Exponential Backoff untuk keandalan jaringan.
          * @param {number} lat Latitude
          * @param {number} lon Longitude
          */
         async function getAddressFromCoords(lat, lon) {
-            reverseGeocodingStatus.textContent = 'Status: Mengambil data alamat...';
-            try {
-                // Fetch call menggunakan exponential backoff untuk keandalan
-                let response = null;
-                const maxRetries = 3;
-                let delay = 10000;
-
-                for (let i = 0; i < maxRetries; i++) {
+            reverseGeocodingStatus.textContent = 'Status: Mengambil data alamat... (Mencoba 1/3)';
+            
+            const maxRetries = 3;
+            let delay = 2000; // Mulai delay 2 detik
+            
+            for (let i = 0; i < maxRetries; i++) {
+                try {
                     const url = REVERSE_GEOCODE_URL.replace('{LAT}', lat).replace('{LON}', lon);
-                    response = await fetch(url);
+                    
+                    // Penting: Nominatim butuh User-Agent yang proper
+                    const response = await fetch(url, {
+                         headers: {
+                            'User-Agent': 'GPS-Monitoring-App/1.0 (contact@example.com)' // Mengidentifikasi aplikasi
+                        }
+                    });
 
-                    if (response.ok) break;
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        if (data.address) {
+                            const address = data.address;
+                            
+                            // Ekstraksi Nama Jalan, Kota, dan Kode Pos
+                            const street = address.road || address.pedestrian || address.neighbourhood || address.residential || 'Jalan/Area Tidak Diketahui';
+                            const city = address.city || address.town || address.village || address.county || '';
+                            const postcode = address.postcode || 'Tidak Ada';
 
+                            streetAddressDisplay.textContent = `${street}, ${city}`;
+                            postcodeDisplay.textContent = postcode;
+                            reverseGeocodingStatus.textContent = `Status: Alamat berhasil diperbarui.`;
+                            return; // Sukses, keluar dari fungsi
+                        } else {
+                            streetAddressDisplay.textContent = 'Alamat tidak ditemukan (data Geocoding kosong).';
+                            postcodeDisplay.textContent = 'Tidak Ada';
+                            reverseGeocodingStatus.textContent = 'Status: Geocoding sukses, namun alamat tidak spesifik.';
+                            return; // Data diterima tapi kosong, hentikan retry
+                        }
+                    } else {
+                        // Jika bukan 200 OK, lempar error untuk retry
+                        throw new Error(`Server responded with status ${response.status}`);
+                    }
+                } catch (error) {
+                    console.error(`Reverse Geocoding Attempt ${i + 1} Failed:`, error.message);
+                    
                     if (i < maxRetries - 1) {
+                        // Lanjut ke retry, update status dan tunggu
+                        reverseGeocodingStatus.textContent = `Status: Gagal (Coba lagi ${i + 2}/${maxRetries} dalam ${delay / 1000} detik)`;
                         await new Promise(resolve => setTimeout(resolve, delay));
-                        delay *= 2; // Exponential backoff
+                        delay *= 2; // Exponential backoff: 2s, 4s, 8s
+                    } else {
+                        // Semua retry gagal
+                        streetAddressDisplay.textContent = 'Gagal total mengambil alamat setelah beberapa kali coba.';
+                        postcodeDisplay.textContent = '--';
+                        reverseGeocodingStatus.textContent = 'Status: Gagal jaringan/API Geocoding.';
+                        displayMessage("Gagal mendapatkan alamat. Pastikan koneksi internet stabil.", 'warning');
                     }
                 }
-
-                if (!response || !response.ok) {
-                    throw new Error(`Failed to fetch address after ${maxRetries} retries.`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.address) {
-                    const address = data.address;
-                    
-                    // Ekstraksi Nama Jalan (Road), Kota (City/Town), dan Kode Pos (Postcode)
-                    const street = address.road || address.pedestrian || address.neighbourhood || 'Jalan Tidak Diketahui';
-                    const city = address.city || address.town || address.village || address.county || '';
-                    const postcode = address.postcode || '--';
-
-                    streetAddressDisplay.textContent = `${street}, ${city}`;
-                    postcodeDisplay.textContent = postcode;
-                    reverseGeocodingStatus.textContent = `Status: Alamat berhasil diperbarui. (${data.display_name.substring(0, 50)}...)`;
-                } else {
-                    streetAddressDisplay.textContent = 'Alamat tidak ditemukan (data Geocoding kosong)';
-                    postcodeDisplay.textContent = '--';
-                    reverseGeocodingStatus.textContent = 'Status: Gagal mengambil alamat. (Cek koneksi/koordinat)';
-                }
-            } catch (error) {
-                console.error("Reverse Geocoding Error:", error);
-                streetAddressDisplay.textContent = 'Kesalahan jaringan saat mengambil alamat.';
-                postcodeDisplay.textContent = '--';
-                reverseGeocodingStatus.textContent = 'Status: Kesalahan jaringan saat Reverse Geocoding.';
             }
         }
 
@@ -314,6 +336,7 @@
             const lat = position.coords.latitude;
             const lon = position.coords.longitude;
             const accuracy = position.coords.accuracy;
+            const timestamp = position.timestamp;
 
             // Memperbarui tampilan koordinat, akurasi meter, dan status akurasi
             latitudeDisplay.textContent = lat.toFixed(6);
@@ -322,7 +345,7 @@
             
             updateAccuracyStatus(accuracy);
             
-            // Memulai Reverse Geocoding
+            // Memulai Reverse Geocoding (asynchronously)
             getAddressFromCoords(lat, lon);
         }
 
@@ -335,29 +358,37 @@
             let msg = '';
             
             // Reset visual akurasi ke status non-aktif
-            accuracyStatusText.textContent = '--';
+            accuracyStatusText.textContent = 'ERROR GPS';
             accuracyStatusBox.classList.remove('bg-green-500', 'text-white', 'bg-yellow-500', 'text-gray-900', 'bg-red-500', 'text-white');
-            accuracyStatusBox.classList.add('bg-gray-100', 'text-gray-500');
+            accuracyStatusBox.classList.add('bg-red-100', 'text-red-700', 'border-red-400');
+            
+            // Reset tampilan koordinat
+            latitudeDisplay.textContent = 'ERROR';
+            longitudeDisplay.textContent = 'ERROR';
+            accuracyDisplay.textContent = 'ERROR';
+
 
             switch(error.code) {
                 case error.PERMISSION_DENIED:
-                    msg = "Izin lokasi diblokir. Silakan lihat petunjuk di bawah ini."; 
+                    msg = "Izin lokasi diblokir. Harap berikan izin di pengaturan peramban."; 
                     permissionGuidanceBox.classList.remove('hidden'); 
-                    
                     streetAddressDisplay.textContent = 'Izin Lokasi Ditolak.';
-                    postcodeDisplay.textContent = '--';
-                    reverseGeocodingStatus.textContent = 'Status: Perlu Izin Lokasi.';
                     break;
                 case error.POSITION_UNAVAILABLE:
-                    msg = "Informasi lokasi tidak tersedia (sinyal GPS lemah).";
+                    msg = "Informasi lokasi tidak tersedia (sinyal GPS lemah/perangkat mati).";
+                    streetAddressDisplay.textContent = 'Sinyal Lokasi Tidak Tersedia.';
                     break;
                 case error.TIMEOUT:
-                    msg = "Waktu tunggu habis. Coba lagi.";
+                    msg = "Waktu tunggu habis (timeout). Sinyal GPS gagal didapatkan dalam 20 detik.";
+                    streetAddressDisplay.textContent = 'Permintaan Lokasi Timeout.';
                     break;
                 default:
                     msg = `Kesalahan tidak dikenal: ${error.message}`;
+                    streetAddressDisplay.textContent = 'Kesalahan Umum GPS.';
             }
-            displayError(msg);
+            displayMessage(msg);
+            postcodeDisplay.textContent = '--';
+            reverseGeocodingStatus.textContent = 'Status: Gagal total mendapatkan lokasi.';
         }
 
         /**
@@ -365,16 +396,24 @@
          */
         function startGpsMonitoring() {
             if (!("geolocation" in navigator)) {
-                displayError("Peramban Anda tidak mendukung Geolocation API.");
+                displayMessage("Peramban Anda tidak mendukung Geolocation API.", 'error');
                 return;
             }
+            
+            // Dapatkan konfigurasi Akurasi Tinggi
+            const enableHighAccuracy = highAccuracyToggle.checked;
 
-            // Atur opsi untuk memaksimalkan kecepatan pembaruan (walaupun 5ms tidak mungkin)
+            // Opsi yang ditingkatkan untuk keandalan dan data segar
             const options = {
-                enableHighAccuracy: true,
-                timeout: 50000,
-                maximumAge: 0 // Memaksa posisi baru di setiap permintaan
+                enableHighAccuracy: enableHighAccuracy,
+                timeout: 20000, // Memberi waktu 20 detik untuk mendapatkan posisi
+                maximumAge: 1000 // Hanya menerima posisi yang usianya kurang dari 1 detik (memaksa pembaruan)
             };
+            
+            // Reset status sebelum memulai
+            accuracyStatusText.textContent = 'Mencari sinyal GPS...';
+            accuracyStatusBox.classList.remove('bg-red-100', 'text-red-700', 'border-red-400');
+            accuracyStatusBox.classList.add('bg-gray-100', 'text-gray-500');
 
             // watchPosition secara otomatis menangani "auto refresh" data lokasi
             watchId = navigator.geolocation.watchPosition(successCallback, errorCallback, options);
@@ -397,12 +436,11 @@
             postcodeDisplay.textContent = '--';
             reverseGeocodingStatus.textContent = 'Status: Monitoring dihentikan.';
             
-            // Reset visual akurasi ke status non-aktif
+            // Reset visual akurasi
             accuracyStatusText.textContent = '--';
-            accuracyStatusBox.classList.remove('bg-green-500', 'text-white', 'bg-yellow-500', 'text-gray-900', 'bg-red-500', 'text-white');
+            accuracyStatusBox.classList.remove('bg-green-600', 'text-white', 'bg-yellow-500', 'text-gray-900', 'bg-red-500', 'text-white');
             accuracyStatusBox.classList.add('bg-gray-100', 'text-gray-500');
             
-            // Sembunyikan tombol akurasi saat monitoring berhenti
             improveAccuracyButton.classList.add('hidden'); 
         }
 
@@ -422,31 +460,28 @@
          */
         improveAccuracyButton.addEventListener('click', () => {
             if (isMonitoring) {
-                // Berikan pesan visual bahwa upaya akurasi dimulai
-                displayError("Memaksa pembaruan akurasi... sistem GPS perangkat diinisialisasi ulang. Tunggu sebentar.");
+                // Tampilkan pesan peringatan
+                displayMessage("Memaksa pembaruan sinyal GPS... tunggu sebentar (maksimal 20 detik).", 'warning');
                 
                 // Matikan dan hidupkan kembali monitoring untuk memaksa perbaikan sinyal
                 stopGpsMonitoring();
-                startGpsMonitoring();
+                // Set timeout singkat agar UI sempat di-update sebelum mulai lagi
+                setTimeout(() => {
+                    startGpsMonitoring();
+                }, 100); 
+                
                 improveAccuracyButton.classList.add('hidden'); // Sembunyikan tombol saat pembaruan dimulai
             }
         });
-
-        /**
-         * Menghandle toggle pembaruan super cepat (5 ms)
-         */
-        fastRefreshToggle.addEventListener('change', () => {
-            if (fastRefreshToggle.checked) {
-                intervalDisplay.textContent = `Interval Aktif: < 200 ms (Upaya "Super Cepat" - HATI-HATI BATERAI)`;
-                displayError("Peringatan: Interval di bawah 2000 ms sangat menguras baterai dan mungkin diabaikan oleh perangkat/OS.");
-            } else {
-                intervalDisplay.textContent = `Interval Aktif: ${REALISTIC_INTERVAL} ms (Interval Praktis)`;
-                messageBox.classList.add('hidden');
-            }
-            // Karena kita menggunakan watchPosition, mengubah opsi hanya memerlukan restart minimal.
+        
+        // Menghandle perubahan opsi akurasi
+        highAccuracyToggle.addEventListener('change', () => {
             if (isMonitoring) {
+                displayMessage("Pengaturan akurasi diubah. Monitoring di-restart.", 'warning');
                 stopGpsMonitoring();
-                startGpsMonitoring();
+                setTimeout(() => {
+                    startGpsMonitoring();
+                }, 100); 
             }
         });
 
@@ -455,3 +490,4 @@
     </script>
 </body>
 </html>
+
